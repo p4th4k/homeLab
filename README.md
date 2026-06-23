@@ -1,4 +1,3 @@
-# WriteUp Template
+# Homelab
 
-This is a minimalist style writeup template made using HTML and pico.css.
-The structure of writeup can be easily understood by studying the HTML file.
+This constitutes the writeup of my home lab implementation.
