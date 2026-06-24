@@ -315,3 +315,9 @@ a{
     scale: 1 !important;
     transition: 10ms ease-in-out;
 }
+
+code{
+    padding: 0 !important;
+    margin-left: -8em !important;
+    line-height: 0.5 !important;
+}
