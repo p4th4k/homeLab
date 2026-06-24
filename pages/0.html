@@ -184,8 +184,8 @@
             </div>
 
             <p>
-                We can verify that a static IP address has been assigned using either
-                <code>ifconfig</code> or the newer <code>ip</code> utility.
+                We generate and then apply the configuration. Now, we can verify that a static IP address has been assigned using either
+                ifconfig or the newer ip utility.
             </p>
 
             <div class="code-block">
@@ -196,6 +196,8 @@
                 
 
                 <pre><code style="line-height: 1.5 !important;">
+                $ netplan generate
+                $ netplan apply
                 $ ifconfig enp0s8
 
                 enp0s8: flags=4163&lt;UP,BROADCAST,RUNNING,MULTICAST&gt; mtu 1500
