@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,15 +10,21 @@
     <link rel="stylesheet" href="../css/style.css">
     <script defer src="../script.js"></script>
     <style>
-        ol li a{
+        ol li a {
             color: #c2c7d0;
             text-decoration: underline;
         }
-        html{
+
+        html {
             scroll-behavior: smooth;
+        }
+
+        .article-content p {
+            text-align: justify !important;
         }
     </style>
 </head>
+
 <body>
     <header class="site-header">
         <nav class="site-nav">
@@ -43,13 +50,429 @@
         </div>
 
         <h1>
-             Doing DNS
+            Doing DNS
         </h1>
+
+        <div class="article-content">
+            <p><b>Objective</b> : In this we are going to create a dns server and connect all the other machines to this
+                dns server and explore related things.</p>
+            <h3>Table Of Contents</h3>
+            <ol>
+                <li><a href="#what">What is DNS?</a></li>
+                <li><a href="#how">How DNS works?</a></li>
+                <li><a href="#example">Example of a full DNS query</a></li>
+                <li><a href="#terms">Some terminologies related to DNS</a></li>
+                <li><a href="#hood">Seeing under the hood</a></li>
+                <li><a href="#setup">Setting up DNS using bind9</a></li>
+                <li><a href="#fix">Connecting other machines to DNS</a></li>
+                <li><a href="#conclusion">Conclusion</a></li>
+            </ol>
+            <h2 id="what">What is DNS?</h2>
+            <p>Many people like to describe DNS as the phonebook of the internet. All the machines are assigned IP
+                addresses on the internet. It is not likely to rememeber ip addresses of our favourite websites and
+                other serivces.</p>
+
+            <p> When you type a website name like example.com into your browser, computers don't actually use that name
+                to find the site. They ask the DNS server that "Hey! What is the IP of this address" to which DNS
+                replies "Yeah, its 172.66.147.243"</p>
+
+            <p>The browser uses this IP address to communicate with the web server and display the website.</p>
+            <h2 id="how">How DNS works?</h2>
+            <p>When you try to access an url for example google.com, your browser ( or any other utility ) checks its
+                cache ( or systemd-resolver ) whether does it have this already cached or not.</p>
+            <p>If not foud, then the recursive DNS resolver ( usually your ISP or a public DNS service ) is queried.
+                This resolver asks a <b>Root DNS server</b> where can I find ".com"?</p>
+            <p>The <b>Root DNS server</b> are servers which contains information about <b>TLD (Top-Level Domain)</b> for
+                eg .com, .net, .org etc. The IPs of these servers are stored locally on your machine as they are rarely
+                changed.</p>
+            <p>Now if they are static ips then arent they suseptible to DDOS attacks? Well no, because these are not
+                physical machines. Rather these IPs are hosted using anycast. Where instead of one machine having this
+                particular IP ( which usually happens, one machine one ip ), many machine ( usually in data centers )
+                host an instance of these servers. So instead of one machine, we have multiple machines in this world
+                serving this IP.</p>
+            <p>Now, the TLD replies with the authoritative name server ( described below in terminologies ) for
+                google.com. Then the resolver asks the authoritative name server the ip of google.com and the server
+                returns the IP.</p>
+            <p>The resolver caches the result and returns it to your device. The server can also define a time to live
+                (TTL) for this dns query so that after a certain time, our machine would need to put another request for
+                the same address.</p>
+            <p>( If this doesn't makes much sense, the following example would clear things up! )</p>
+            <h2 id="example">Example of a full DNS query</h2>
+            <p>We will use dig utility to trace the whole journey of our DNS request. This command would return the
+                detailed dns query.</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code>
+                $ dig -4 +trace google.com @8.8.8.8
+</code></pre>
+
+
+            </div>
+            <figure class="article-image">
+                <img src="../img/dig.png" alt="Dig output" />
+                <figcaption>Dig output.</figcaption>
+            </figure>
+
+            <p>We can observe that it first queries the root DNS server. ( By default, port 53 is used for DNS )</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height: 1.5 !important;">
+                .                       87203   IN  NS  a.root-servers.net.
+                .                       87203   IN  NS  b.root-servers.net.
+                .                       87203   IN  NS  c.root-servers.net.
+                ...
+                .                       87203   IN  NS  m.root-servers.net.
+
+                ;; Received 525 bytes from 8.8.8.8#53(8.8.8.8) in 11 ms
+</code></pre>
+
+
+            </div>
+            <p>One of these server replies with the address of ".com"</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height: 1.5 !important;">
+                com.                    172800  IN  NS  a.gtld-servers.net.
+                com.                    172800  IN  NS  b.gtld-servers.net.
+                com.                    172800  IN  NS  c.gtld-servers.net.
+                ...
+                com.                    172800  IN  NS  m.gtld-servers.net.
+
+                ;; Received 1170 bytes from 170.247.170.2#53(b.root-servers.net) in 109 ms
+</code></pre>
+
+
+            </div>
+            <p>Then one of the ".com" server replies with the address of the authoritative server of google.com</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height: 1.5 !important;">
+                ;; Received 1170 bytes from 170.247.170.2#53(b.root-servers.net) in 109 ms
+
+                google.com.             172800  IN  NS  ns1.google.com.
+                google.com.             172800  IN  NS  ns2.google.com.
+                google.com.             172800  IN  NS  ns3.google.com.
+                google.com.             172800  IN  NS  ns4.google.com.
+
+                ;; Received 644 bytes from 192.12.94.30#53(e.gtld-servers.net) in 238 ms
+</code></pre>
+
+
+            </div>
+
+            <p>Then one of the servers from the list replies with ip address of google.com</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height:1.5 !important;">
+                google.com.             300     IN  A   142.250.77.46
+
+                ;; Received 55 bytes from 216.239.34.10#53(ns2.google.com) in 11 ms
+</code></pre>
+
+
+            </div>
+
+            <p>Now this is what exactly happens behind the scenes when your dns resolver tries to resolve the ip address of a url.</p>
+            <h2 id="terms">Some terminologies related to DNS</h2>
+            <ol>
+                <li><b>Namespace</b>: It is a hierarchial naming structure used to organize domain names on the internet. It starts at the root and branches into top-level domains and then individual domains. Heres how the current structure looks like :</li>
+                <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height:1.5 !important;">
+                                    . (Root )
+                                    |
+                    -------------------------------------
+                    |           |           |           |
+                    .com        .org        .edu        .in  <- Top-Level Domains (TLDs)
+                    |                                   |
+                example.com                             ac.in 
+                    |                                   |
+                -----------                         ----------  
+                |         |                         |        |
+                www      mail                      co.in    gov.in 
+                            |                       |        |
+                Host A   Mail Server              college.ac.in
+</code></pre>
+
+
+            </div>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height:1.5 !important;">
+                .
+                |__ in
+                     |__ ac
+                          |__ college 
+                               |__ www.college.ac.in 
+                               |__ mail.college.ac.in 
+                               |__ cs.college.ac.in 
+</code></pre>
+
+
+            </div>
+                <li><b>Domain</b>: A named section within the namespace. For eg above, college is a domain, mail.college.ac.in is a domain, so on and so forth.</li>
+                <li><b>Zone</b>: A portion of the DNS namespace that is managed by a specific administrator or DNS server. A zone contains DNS records for one or more domains or subdomains. For eg college is a zone which contains records for webpage, department info, mail server etc.</li>
+                <li><b>Authoritative DNS Server</b>: A DNS server that stores the official DNS records for a zone and provides the final, authoritative answers to DNS queries about names in that zone.</li>
+            </ol>
+
+            <p>A useful analogy. Imagine the namespace as the world map, it knows where everything is. Domains can be thought of as countries. Zones can be thought of as states in the country. And the Authoritative Server can be thought of as the state government which manages and stores all the records of the state. The zone is just a map, authoritative server is the one which servers.</p>
+
+            <h2 id="hood">Seeing under the hood</h2>
+            <p>Before we dive deep, I present to you a summary of how DNS</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height:1.5 !important;">
+                                   Application
+                                (curl, ping, ssh)
+                                        │
+                                        ▼
+                                glibc getaddrinfo()
+                                        │
+                                        ▼
+                                /etc/nsswitch.conf
+                                        │
+                            ┌─────────────┴─────────────┐
+                            ▼                           ▼
+                        /etc/hosts                 DNS lookup
+                                                        │
+                                                        ▼
+                                            /etc/resolv.conf
+                                            nameserver 127.0.0.53
+                                                        │
+                                                        ▼
+                                        systemd-resolved (local stub)
+                                            127.0.0.53:53
+                                                        │
+                                    ┌────────────────────┼────────────────────┐
+                                    ▼                    ▼                    ▼
+                                Cache          Interface-specific DNS     DNSSEC/DoT
+                                                        │
+                                                        ▼
+                                        Upstream DNS server (e.g. router,
+                                        public DNS, VPN-provided DNS)
+                                                        │
+                                                        ▼
+                                                Authoritative DNS
+                                                        │
+                                                        ▼
+                                                IP address returned
+                                                        │
+                                                        ▼
+                                                    Application connects
+</code></pre>
+
+
+            </div> 
+            <p>Let us say that we use curl to see an webpage. Curl does not implement a mechanism for dns of its own, rather it utilises the existing machinery provided by linux kernel.</p>
+            <p>Curl calls <b>getaddrinfo() ( provided by glibc )</b> which reads configuration from /etc/nsswitch.conf . This tells us whether to check /etc/hosts or maybe multicast dns or ask systemd-resolved or use normal dns.</p>
+
+            <p>Before DNS lookup happens, this file, <b>/etc/hosts</b>b is checked. If the hostname exists here, no dns query happens. If not then dns query happens.</p>
+
+            <p>This file, <b>/etc/resolve.conf</b> contains details of the nameserver to refer to for making the dns query. We would often see 127.0.0.53 being a part of this file. This 127.0.0.53 is the local resolver which forwards our request to <b>systemd-resolved</b>, used by many distributions, it decides where our queries go. This service usually runs on port 53 of 127.0.0.53 as both TCP and UDP port. So finally, applications send their packets to 127.0.0.53:53</p>
+
+            <p>The systemd-resolved is required because it provides DNS cache, VPN support, DNS over TLS, Better integration with network managers, Per-interface DNS, DNSSEC validation etc. To interact with systemd-resolved we can use <b>resolvectl</b></p>
+
+            <p>The systemd-resolved is the daemon itself which receives dns request, caches them, chooses dns server and forwards query. It gets its DNS servers usually from DHCP, static configuration, NetworkManager, systemd-networkd, VPN etc.</p>
+
+            <p>Also /etc/resolv.conf can be asymlink which means /etc/resolve.conf -> /run/systemd/resolve/stud-resolve.conf which contains "nameserver 127.0.0.53". It is diff from /resolve.conf as /etc/resolve.conf contains the actual upstream DNS server.</p>
+
+            <p>So in summary, /etc/resolv.conf tells applications where to send DNS queries, while systemd-resolved determines how and where those queries are ultimately resolved, adding caching and other functionalities. </p>
+
+            <h2 id="setup">Setting up DNS using bind9</h2>
+            First of all we install: 
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height:1.5 !important;">
+                $ sudo apt install bind9 bind9utils dnsutils
+</code></pre>
+
+
+            </div>
+            <p>Bind9 is the DNS server, bind9-utils contains the management tools and dnsutils contains tools like dig.</p>
+            <p>Now we study the configuration files. The typical layout is something like this:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height:1.5 !important;">
+                /etc/bind/
+
+                named.conf ( simply loads the below mentioned files ) 
+                named.conf.options ( options for the dns server )
+                named.conf.local (local zones )
+                named.conf.default-zones ( default zones )
+
+                /etc/bind/zones 
+</code></pre>
+
+
+            </div>
+
+            <p>To creat our own zone we edit the /etc/bind/named.conf.local file.</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">vim</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height:1.5 !important;">
+                zone "lab.local" {
+                    type master;
+                    file "/etc/bind/zones/db.lab.local";
+                }
+</code></pre>
+
+
+            </div>
+            <p>Here, the map or the information would be in the zones folder in the db.lab.local file. Now we create the zone file ( do it yourself ).</p>
+
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">vim</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height:1.5 !important;">
+                $TTL 604800
+                @    IN SOA dns1.lab.local admin.lab.local (
+                         2
+                         604800
+                         86400
+                         2419200
+                         604800 )    
+                @        IN NS dns1.lab.lcoal. 
+                dns1   IN A 10.2.0.20
+                server IN A 10.2.0.10
+                web    IN A 10.2.0.30
+</code></pre>
+
+
+            </div>
+            <p>The TTL specifies for how long we should cache the dns query before asking for it again. Other parameters inside the bracket can be understood by reading the docs. </p>
+            <p><b>SOA</b> means start of authority which contains metadata. <b>NS</b> means nameserver so lab.local would have dns1.lab.local as its nameserver. And obviously at the end we add our records so for eg web.lab.local would correspond to 10.2.0.30.</p>
+            <p>Now we just restart bind9 and check if the files work.</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height:1.5 !important;">
+                $ sudo named-checkconf
+                $ sudo named-checkzone lab.local /etc/bind/zones/db.lab.local 
+                $ sudo systemctl restart bind9 
+</code></pre>
+
+
+            </div>
+
+            <p>And now we have our dns server. We can test it using</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height:1.5 !important;">
+                $ dig @127.0.0.1 web.lab.local
+</code></pre>
+
+
+            </div>
+            <h2 id="fix">Connecting other machines to DNS</h2>
+            <p>To allow other machines to connect, we simply configure the netplan file.</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height:1.5 !important;">
+                network:
+                    ethernet:
+                        enp0s8:
+                            addresses:
+                                - 10.2.0.20/24
+                            nameservers:
+                                addresses:
+                                    - 10.2.0.20
+                                search:
+                                    - lab.local
+                            dhcp4: false
+                            dhcp6: false
+                    version: 2
+</code></pre>
+
+
+            </div>
+            <p>In this we added the nameservers where we mentioned the address of our dns server in our local network and also included the lab.local doamin which basically means that when any query related to this domain floats, send it to enp0s8. Another way if you are not using bind9 then you can manually add the nameserver in /etc/resolve.conf .</p>
+            <h2 id="conclusion">Conclusion</h2>
+            <p>In this article we set up a DNS server and connect other machines to this DNS server. Also we explored
+                some other tools and understood how DNS works.</p>
+            <div class="flex" style="display: flex; justify-content: space-between;">
+                <a href="./0.html" style="font-size: 1.1rem;">Previous article</a>
+                <a href="./2.html" style="font-size: 1.1rem;">Next Article</a>
+            </div>
+        </div>
     </main>
     <footer class="site-footer">
-            <p>
-                Made with ❤️ by <a href="https://github.com/p4th4k" target="_blank">p4th4k</a>
-            </p>
-        </footer>
+        <p>
+            Made with ❤️ by <a href="https://github.com/p4th4k" target="_blank">p4th4k</a>
+        </p>
+    </footer>
 </body>
+
 </html>
