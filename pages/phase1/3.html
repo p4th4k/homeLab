@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,6 +10,7 @@
     <link rel="stylesheet" href="../../css/style.css">
     <script defer src="../../script.js"></script>
 </head>
+
 <body>
     <header class="site-header">
         <nav class="site-nav">
@@ -36,11 +38,278 @@
         <h1>
             Dynamic with DHCP
         </h1>
+
+        <div class="article-content">
+            <p>
+                <b>Objective</b>: In this we are going to create a DHCP server, setup a web server and learn related
+                things.
+            </p>
+            <p>For this we are not going to create another virtual machine. Rather we would use the router because in
+                most setups router and dhcp are configured in same machine. But for the purpose of web server, we create
+                another machine.</p>
+
+            <h3>Table Of Contents</h3>
+            <ol>
+                <li><a href="#problem">The Problem</a></li>
+                <li><a href="#solution">The Solution: DHCP</a></li>
+                <li><a href="#dora">DORA</a></li>
+                <li><a href="#web">Setting up Web Server</a></li>
+                <li><a href="#fly">Bonus: Seeing the requests fly</a></li>
+                <li><a href="#conclusion">Conclusion</a></li>
+            </ol>
+
+            <h2 id="problem">The Problem</h2>
+
+            <p>In our current setup, if we create new virtual machine then we have to manually create netplan config and
+                add things ourselves. Now imagine, if in our setup we have 10 new machines joining, then we would have
+                to assign the config manually to each of them.</p>
+
+            <p>Now you would have started to see why that is a problem. In a big infrastructure, this would be nothing
+                sort of a nightmare.</p>
+
+            <h2 id="solution">The Solution: DHCP</h2>
+
+            <p>The solution is to have a service that would provide these configurations to the machines which join our
+                network.The service responsible for this is called DHCP which stands for Dynamic Host Configuration
+                protocol.</p>
+
+            <p>The mechanism, thought complicated, is simple in its spirit. The new machine sends requests to the
+                broadcast (255.255.255.255 ), the DHCP server see those request and replies with the config. ( we will
+                see dora later in action )</p>
+
+            <h2 id="dora">DORA</h2>
+
+            <p>
+                The DORA protocol is the standard 4-step process used by DHCP (Dynamic Host Configuration Protocol) to
+                automatically assign IP addresses and other network settings to devices.
+            </p>
+
+            <ol>
+                <li>
+                    <b>Discover (D)</b>: <p>When a device connects to a network, it doesn't have an IP.It sends a DHCP
+                        Discover message as a broadcast because it does not know where the DHCP server is. The purpose
+                        of this is to find if there any DHCP server available.</p>
+                    <p>
+                        <b>Source IP</b>: 0.0.0.0
+                        <br>
+                        <b>Destination IP</b>: 255.255.255.255 (broadcast)
+                    </p>
+                </li>
+                <li>
+                    <b>Offer (O)</b>: <p>One or more DHCP server respond with a DHCP Offer. The offer contains an
+                        available IP addr, subnet mask, default gateway, dns server(s), lease duration.</p>
+                </li>
+                <li>
+                    <b>Request (R)</b>: <p>The client chooses one of the offers (usually the first one). Then it sends a
+                        DHCP Request message, typically as broadcast. This tell all DHCP servers which offer it has
+                        accepted.</p>
+                </li>
+                <li>
+                    <b>Acknowledge (A)</b>: <p>The selected DHCP server sends a DHCP ACK. This confirms the lease and
+                        provides the final configuration details. The client configures its network interface with
+                        assigned details.</p>
+                </li>
+            </ol>
+
+            <h2 id="web">Setting up Web Server</h2>
+
+            <p>This is fairly simple. Create a new VM and install nginx on it.</p>
+
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height: 1.5 !important;">
+                $ sudo apt install nginx
+                $ sudo systemctl start nginx
+</code></pre>
+
+
+            </div>
+
+            <p>On most linux configurations, this would automatically serve a welcome page on localhost.</p>
+
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height: 1.5 !important;">
+                $ curl http://localhost
+                &lt;!DOCTYPE html&gt;
+                &lt;html&gt;
+                &lt;head&gt;
+                &lt;title&gt;Welcome to nginx!&lt;/title&gt;
+                ...
+</code></pre>
+
+
+            </div>
+
+            <h2 id="fly">Bonus: Seeing the requests fly</h2>
+
+            <p>To do so we will use tcpdump to observe requests on the webserver.</p>
+
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height: 1.5 !important;">
+                $ sudo tcpdump -nn
+</code></pre>
+
+
+            </div>
+
+            <p>The first thing to observe would be the ARP requests. Every machine constantly updates its ARP cache.</p>
+
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+
+
+                <pre><code style="line-height: 1.5 !important;">
+                18:32:51.318898 ARP, Request who-has 10.2.0.30 tell 10.2.0.10, lenght 46
+                18:32:51.322457 ARP, Reply 10.2.0.30 is-at 08:00:27:e7:40:65, lenght 28
+</code></pre>
+            </div>
+
+            <p>Here 10.2.0.10 is the machine requesting the website and 10.2.0.30 is the machine hosting the website.
+                One thing to notice is that the reply to ARP request is a mac address. This is because ARP operates at
+                layer 2 and keeps track of mac addresses.</p>
+
+            <p>Now once the user knows the web-server. It would perfrom a three step handshake with it to establish a
+                TCP connection which is a layer 3 protocol. Another layer 3 protocol is UDP but it just sends the data
+                without any thought to whether the data would be recived at other end. Whereas TCP performs a handshake
+                and establishes a connection where no packet is dropped.</p>
+
+            <figure class="article-image">
+                <img src="../../img/tcp.png" alt="Application dashboard" style="border-radius: 0;" />
+
+                <figcaption>
+                    TCP Handshake
+                </figcaption>
+            </figure>
+
+            <p>If it is not visible then heres a detailed explanation (better image below):</p>
+
+            <ul>
+                <li>
+                    <b>10.2.0.10:56880 → 10.2.0.30:80 Flags [S]</b>
+                    <p>This is <b>SYN</b> packet, the first of three. This is sent by the client to start a TCP
+                        connection</p>
+                </li>
+                <li>
+                    <b>10.2.0.30:80 → 10.2.0.10:56880 Flags [S.]</b>
+                    <p>This is <b>SYN-ACK</b> packet, the second of three. This is sent by the server as an reply to the
+                        SYN packet.</p>
+                </li>
+                <li>
+                    <b>10.2.0.10:56880 → 10.2.0.30:80 Flags [.] ack 1</b>
+                    <p>This is <b>ACK</b> packet, the third of three. This is the final packet sent by the client which
+                        marks the end of handshake, marking it as complete and the connection is established.</p>
+                </li>
+            </ul>
+
+            <p>After this the client requests a web page by making a GET request which gets acknowledged by the
+                web-server</p>
+
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+                <pre><code style="line-height: 1.5 !important;">
+                10.2.0.10.56880 > 10.2.0.30.80: Flags [P.],  length 73: HTTP: GET / HTTP/1.1
+                10.2.0.30.80 > 10.2.0.10.56880: Flags [.], ack, length 0
+</code></pre>
+            </div>
+
+            <p>Now the server sends the webpage as an response to the GET request which gets acknowledged by the client
+            </p>
+
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+                <pre><code style="line-height: 1.5 !important;">
+                10.2.0.30.80 > 10.2.0.10.56880: Flags [P.], length 862: HTTP: HTTP/1.1 200 OK
+                10.2.0.10.56880 > 10.2.0.30.80: Flags [.], ack length 0
+</code></pre>
+            </div>
+
+            <p>Since the data is transferred, we shall close the connection.</p>
+
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+                <pre><code style="line-height: 1.5 !important;">
+                10.2.0.10.56880 > 10.2.0.30.80: Flags [F.], length 0
+                10.2.0.30.80 > 10.2.0.10.56880: Flags [F.], length 0
+                10.2.0.10.56880 > 10.2.0.30.80: Flags [.], ack 864, length 0
+
+</code></pre>
+            </div>
+
+            <figure class="article-image">
+                <img src="../../img/tcp_out.png" alt="Application dashboard" style="border-radius: 0;" />
+
+                <figcaption>
+                    Complete output
+                </figcaption>
+            </figure>
+
+            <p>Complete output in text:</p>
+
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-language">text</span>
+                    <button class="copy-btn">Copy</button>
+                </div>
+                <pre><code style="line-height: 1.5 !important;">
+                18:32:51.316898 ARP, Request who-has 10.2.0.30 tell 10.2.0.10, length 46
+                18:32:51.318971 ARP, Reply 10.2.0.30 is-at 08:00:27:e7:40:65, length 28
+                18:32:51.322457 IP 10.2.0.10.56880 > 10.2.0.30.80: Flags [S], seq 4071076946, win 64240, options [mss 1460,sackOK,TS val 306086893 ecr 0,nop,wscale 8], length 0
+                18:32:51.322533 IP 10.2.0.30.80 > 10.2.0.10.56880: Flags [S.], seq 2690901113, ack 4071076947, win 65160, options [mss 1460,sackOK,TS val 2198499743 ecr 306086893,nop,wscale 8], length 0
+                18:32:51.325000 IP 10.2.0.10.56880 > 10.2.0.30.80: Flags [.], ack 1, win 251, options [nop,nop,TS val 306086900 ecr 2198499743], length 0
+                18:32:51.325000 IP 10.2.0.10.56880 > 10.2.0.30.80: Flags [P.], seq 1:74, ack 1, win 251, options [nop,nop,TS val 306086901 ecr 2198499743], length 73: HTTP: GET / HTTP/1.1
+                18:32:51.325076 IP 10.2.0.30.80 > 10.2.0.10.56880: Flags [.], ack 74, win 255, options [nop,nop,TS val 2198499745 ecr 306086901], length 0
+                18:32:51.328556 IP 10.2.0.30.80 > 10.2.0.10.56880: Flags [P.], seq 1:863, ack 74, win 255, options [nop,nop,TS val 2198499749 ecr 306086901], length 862: HTTP: HTTP/1.1 200 OK
+                18:32:51.331879 IP 10.2.0.10.56880 > 10.2.0.30.80: Flags [.], ack 863, win 248, options [nop,nop,TS val 306086907 ecr 2198499749], length 0
+                18:32:51.334904 IP 10.2.0.10.56880 > 10.2.0.30.80: Flags [F.], seq 74, ack 863, win 248, options [nop,nop,TS val 306086909 ecr 2198499749], length 0
+                18:32:51.336115 IP 10.2.0.30.80 > 10.2.0.10.56880: Flags [F.], seq 863, ack 75, win 255, options [nop,nop,TS val 2198499756 ecr 306086909], length 0
+                18:32:51.337730 IP 10.2.0.10.56880 > 10.2.0.30.80: Flags [.], ack 864, win 248, options [nop,nop,TS val 306086914 ecr 2198499756], length 0
+</code></pre>
+            </div>
+
+            <h2 id="conclusion">Conclusion</h2>
+
+            <p>In this article, we learnt about DHCP, setUP a DHCP server, a web server, understood every basic thing related to them. And this marks the end of our phase 1 where we built a mini datacenter for our cloud platform. We shall scale this to great heights in upcoming articles.</p>
+
+            <div class="flex" style="display: flex; justify-content: space-between;">
+                <a href="./2.html" style="font-size: 1.1rem;">Previous article</a>
+                <a href="../phase2/4.html" style="font-size: 1.1rem;">Next Article</a>
+            </div>
+        </div>
     </main>
     <footer class="site-footer">
-            <p>
-                Made with ❤️ by <a href="https://github.com/p4th4k" target="_blank">p4th4k</a>
-            </p>
-        </footer>
+        <p>
+            Made with ❤️ by <a href="https://github.com/p4th4k" target="_blank">p4th4k</a>
+        </p>
+    </footer>
 </body>
+
 </html>
